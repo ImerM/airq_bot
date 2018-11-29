@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Deploys a State Machine that runs a twitter bot
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Lambda Functions
+      Parameters:
+      - FeedparserArn
+      - MakeHistArn
+      - WriteOnImgArn
+      - MergeImagesArn
+      - PublishToTwArn
+
+Parameters:
+  FeedparserArn:
+    Type: String
+    Description: Arn of Lambda Function to parse RSS feed for air quality data
+  MakeHistArn:
+    Type: String
+    Description: Arn of Lambda Function to create a histogram from air quality data
+  WriteOnImgArn:
+    Type: String
+    Description: Arn of Lambda Function to write current AQI on a template image
+  MergeImagesArn:
+    Type: String
+    Description: Arn of Lambda Function to merge two images together, of same Y dimensions
+  PublishToTwArn:
+    Type: String
+    Description: Arn of Lambda Function to publish to Twitter an image and text
+
+Resources:
+  StatesExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - !Join [".", [ "states", !Ref "AWS::Region", "amazonaws.com"] ]
+            Action:
+              - "sts:AssumeRole"
+
+  StatesExecutionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: StatesExecutionPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: "lambda:InvokeFunction"
+            Resource: "*"
+      Roles:
+        - !Ref StatesExecutionRole
+
+  TwitterAirQ:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      RoleArn: !GetAtt StatesExecutionRole.Arn
+      DefinitionString: !Sub |-
+        {
+          "Comment": "Runs the TW AirQ pipeline",
+          "StartAt": "FeedParser",
+          "States": {
+              "FeedParser":{
+                "Type": "Task",
+                "Resource": "${FeedparserArn}",
+                "ResultPath": "$.feedData",
+                "Next": "ImageProcessParallel"
+              },
+              "ImageProcessParallel": {
+                  "Type": "Parallel",
+                  "Next": "MergeImages",
+                  "InputPath": "$",
+                  "ResultPath": "$.ImagePaths",
+                  "Branches": [
+                      {
+                          "StartAt": "WriteOnImg",
+                          "States": {
+                              "WriteOnImg": {
+                                  "Type": "Task",
+                                  "Resource": "${WriteOnImgArn}",
+                                  "End": true             
+                              }
+                          }
+                      },{
+                          "StartAt": "MakeHist",
+                          "States": {
+                              "MakeHist": {
+                                  "Type": "Task",
+                                  "Resource": "${MakeHistArn}",
+                                  "End": true             
+                              }
+                          }
+                      }
+                  ]
+
+              },
+              "MergeImages": {
+                  "Type": "Task",
+                  "Resource": "${MergeImagesArn}",
+                  "Next": "PublishToTw",
+                  "InputPath": "$.ImagePaths",
+                  "ResultPath": "$.publishableData.image_path"
+              },
+              "PublishToTw": {
+                  "Type": "Task",
+                  "Resource": "${PublishToTwArn}",
+                  "InputPath": "$.publishableData",
+                  "End": true
+              }
+            }
+          }
