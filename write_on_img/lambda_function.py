@@ -41,8 +41,12 @@ def handler(event, context):
         'Unhealthy for Sensitive Groups': 'assets/sensitive.png',
         'Unhealthy': 'assets/unhealthy.png',
         'Very Unhealthy': 'assets/v_unhealthy.png',
-        'Hazardous': 'assets/hazardous.png'
+        'Hazardous': 'assets/hazardous.png',
+        'Extra Hazardous': 'assets/memo_haljevac.jpeg',
     }
+
+    if event['feedData']['last']['aqi'] > 499:
+        event['feedData']['last']['desc'] = 'Extra Hazardous'
     
     path = upload_to_s3(write_on_img(images_map[event['feedData']['last']['desc']], event['feedData']['last']['aqi']))
     return {'template_img':path}

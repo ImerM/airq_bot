@@ -11,8 +11,12 @@ import traceback
 def make_hist(data):
     dpi = 96
     plt.figure(1,figsize=(700/dpi,500/dpi))
+    for j in range(0, len(data['y'])):
+        if (data['y'][j] == 999):
+            data['y'][j] = 0
     plt.bar(data['x'], data['y'], color=data['color'])
     ax = plt.gca()
+    ax.set_ylim([0,500])
     plt.xticks(rotation=45)
     plt.text(0.5, 1.05, 'Prethodna 24 sata', horizontalalignment='center', verticalalignment='center', transform=ax.transAxes, fontsize = 16)
     plt.savefig('/tmp/histogram.png')
